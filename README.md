@@ -1,6 +1,6 @@
-# Notion scheduler
+# `notion_scheduler`
 
-This tool allows the creation of---drumroll---*recurring tasks in Notion*!
+This tool allows the creation of---*drumroll*---**recurring tasks in Notion!**
 
 This is done by defining a Notion database (which I will call the Scheduled database) that contains rules for recurring tasks.
 This tool reads these definitions and creates each of those tasks on your actual tasks database (which I will call the Tasks database).
@@ -39,8 +39,8 @@ The options below should be in YAML format in the configuration file.
 | `token_v2` | `str` | Notion v2 token. Get by inspecting your browser's cookies on a Notion page. |
 | `properties_to_sync` | `List[str]` | Additional properties to sync over from the Scheduled database. |
 | `tags_property` | `str` | The Select field named by this option for which to add the tag `scheduled_tag` for each created task. |
-| `scheduled_tag` | `str` | The tag to put in `tags_property` for each created task. Allows Notion scheduler to keep track of which tasks in the Tasks database it has generated, so that it can replace them with the updated ones on every run. |
-| `rescheduled_tag` | `str` | If you ever manually reschedule a scheduled task in the Tasks database, remove the tag `scheduled_tag` from the field `tags_property`, and add the tag defined by this option. This allows control over which tasks Notion scheduler deletes on re-run (see command-line options). |
+| `scheduled_tag` | `str` | The tag to put in `tags_property` for each created task. Allows `notion_scheduler` to keep track of which tasks in the Tasks database it has generated, so that it can replace them with the updated ones on every run. |
+| `rescheduled_tag` | `str` | If you ever manually reschedule a scheduled task in the Tasks database, remove the tag `scheduled_tag` from the field `tags_property`, and add the tag defined by this option. This allows control over which tasks `notion_scheduler` deletes on re-run (see command-line options). |
 | `status_property` | `Optional[str]` | If this exists, set the Select field named by this option to `status_before_today` if a created task is scheduled for before today, or `status_after_today` if a created task is scheduled for on or after today. |
 | `status_before_today` | `str` | See `status_property` |
 | `status_after_today` | `str` | See `status_property` |
