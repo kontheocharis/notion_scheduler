@@ -3,9 +3,18 @@
 This tool allows the creation of---*drumroll*---**recurring tasks in Notion!**
 
 This is done by defining a Notion database (which I will call the Scheduled database) that contains rules for recurring tasks.
-This tool reads these definitions and creates each of those tasks on your actual tasks database (which I will call the Tasks database).
+This tool reads these definitions and creates each occurrence of those tasks in your actual tasks database (which I will call the Tasks database).
 
 **DISCLAIMER**: I am not responsible if this tool causes any data loss in your Notion database. Always back up your data!
+
+# Installation
+
+```
+pip3 install notion_scheduler
+notion_scheduler -h
+```
+
+You can also run this from source by installing all the requirements (see `requirements.txt`) and running `./notion_scheduler.py -h`.
 
 # Fields required in the Scheduled database
 
