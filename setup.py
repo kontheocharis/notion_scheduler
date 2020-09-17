@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="notion_scheduler",
-    version="1.0.0",
+    version="1.0.1",
     author="Constantine Theocharis",
     author_email="cthe@mailbox.org",
     description="Allows the creation of recurring tasks in Notion.",
@@ -20,6 +20,7 @@ setuptools.setup(
         "Operating System :: Unix",
     ],
     python_requires='>=3.7',
+    install_requires=open('requirements.txt').read().splitlines(),
     entry_points={
         'console_scripts': [
             'notion_scheduler=notion_scheduler.main:main',
