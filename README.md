@@ -16,6 +16,8 @@ notion_scheduler -h
 
 You can also run this from source by installing all the requirements (see `requirements.txt`) and running `./notion_scheduler.py -h`.
 
+**Tip**: the `--dry-run --log-level=verbose` option set can be really useful to see what will happen before applying changes.
+
 # Fields required in the Scheduled database
 
 The fields below are case insensitive.
