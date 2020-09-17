@@ -139,6 +139,13 @@ def parse_reminder(reminder_str: str) -> Dict[str, Any]:
     }
 
 
+def get_row_prop(row: CollectionRowBlock, property: str) -> Any:
+    try:
+        return getattr(row, property)
+    except TypeError:
+        return None
+
+
 def create_entries(
     settings: Settings,
     config: Config,
@@ -176,11 +183,11 @@ def create_entries(
                 ) >= datetime.date.today() else config.status_before_today
 
         reminder = None
-        if spec_row.reminder:
+        if get_row_prop(spec_row, 'reminder'):
             reminder = parse_reminder(spec_row.reminder)
 
-        if spec_row.include_time:
-            if spec_row.duration:
+        if get_row_prop(spec_row, 'include_time'):
+            if get_row_prop(spec_row, 'duration'):
                 duration = datetime.timedelta(
                     minutes=Duration(spec_row.duration).to_minutes())
                 to_insert[spec_row.date_field] = NotionDate(dt,
