@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="notion_scheduler",
-    version="1.0.2",
+    version="1.0.3",
     author="Constantine Theocharis",
     author_email="cthe@mailbox.org",
     description="Allows the creation of recurring tasks in Notion.",
