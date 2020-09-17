@@ -23,12 +23,12 @@ The fields below are case insensitive.
 | Name of field | Type of field | Description |
 |-|-|-|
 | Title | Text | The title of the task |
-| Recurrence | Text | The recurrence rule for the task (see (https://github.com/kvh/recurrent)[recurrent] for supported fields) |
-| Not on | Text | A (https://github.com/kvh/recurrent)[recurrent] rule that describes dates to exclude |
+| Recurrence | Text | The recurrence rule for the task (see [recurrent](https://github.com/kvh/recurrent) for supported rules) |
+| Not on | Text | A [recurrent](https://github.com/kvh/recurrent) rule that describes dates to exclude |
 | Start date | Date | The date from which `notion_scheduler` should start creating this task |
 | Include time | Checkbox | Whether to include time in the created tasks (defined in the Recurrence field) |
-| Duration | Text | If "Include time", how long should each created task last (see (https://github.com/oleiade/durations)[durations] for syntax)? Empty means no end time. |
-| Reminder | Text | A (https://github.com/oleiade/durations)[durations] rule that describes when you should be reminded. Empty means no reminder. |
+| Duration | Text | If "Include time", how long should each created task last (see [durations](https://github.com/oleiade/durations) for syntax)? Empty means no end time. |
+| Reminder | Text | A [durations](https://github.com/oleiade/durations) rule that describes when you should be reminded. Empty means no reminder. |
 | Date field | Text or Select | The name of the date field of the Tasks database |
 
 Any additional fields defined in the Scheduled database will be copied over to each created task, as defined in the `properties_to_sync` configuration option (see below).
