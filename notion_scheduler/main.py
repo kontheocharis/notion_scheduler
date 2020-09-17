@@ -137,17 +137,31 @@ def create_entries(
     settings: Settings,
     spec_row: CollectionRowBlock,
 ) -> Generator[Dict[str, Any], None, None]:
-    r = RecurringEvent(now_date=datetime.datetime.now())
+    r = RecurringEvent(now_date=spec_row.start_date.start)
     times = r.parse(spec_row.recurrence)
-    rr = rrule.rrulestr(r.get_RFC_rrule())
+    rr = rrule.rrulestr(r.get_RFC_rrule(), dtstart=spec_row.start_date.start)
+
+    if spec_row.not_on != '-':
+        not_r = RecurringEvent(now_date=spec_row.start_date.start)
+        not_times = not_r.parse(spec_row.not_on)
+        not_dates = {
+            d.date()
+            for d in rrule.rrulestr(
+                not_r.get_RFC_rrule(),
+                dtstart=spec_row.start_date.start,
+            )
+        }
 
     date_field = 'due' if spec_row.do_due == 'Due' else 'do_on'
 
     for dt in rr:
+        if spec_row.not_on != '-' and dt.date() in not_dates:
+            continue
         to_insert = {
             'title': spec_row.title,
             'tags': spec_row.tags + ['Scheduled'],
             'priority': spec_row.priority,
+            'status': 'Not started' if dt.date() >= datetime.date.today() else 'Completed',
         }
 
         if spec_row.reminder:
@@ -165,12 +179,12 @@ def create_entries(
             else:
                 to_insert[date_field] = NotionDate(dt, reminder=reminder)
         else:
-            to_insert[date_field] = NotionDate(dt.date, reminder=reminder)
+            to_insert[date_field] = NotionDate(dt.date(), reminder=reminder)
 
         if not settings.dry_run:
             yield to_insert
         logging.info(
-            f"Added spec_row '{to_insert['title']}' for {dt:%Y-%m-%d}")
+            f"Added row '{to_insert['title']}' for {dt:%Y-%m-%d}")
 
 
 def run_scheduler(settings: Settings, config: Config) -> None:
