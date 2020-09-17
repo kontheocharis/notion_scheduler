@@ -16,7 +16,7 @@ import datetime
 from dateutil import rrule
 from durations import Duration
 
-from typing import Dict, Any, Generator
+from typing import Dict, Any, Generator, Optional, List
 
 LOGGING_FORMAT = "%(levelname)s: %(message)s"
 
@@ -59,6 +59,13 @@ class Config:
     todo_collection_url: str
     scheduled_collection_url: str
     token_v2: str
+    properties_to_sync: List[str]
+    scheduled_tag: str
+    rescheduled_tag: str
+    status_property: Optional[str]
+    tags_property: str
+    status_before_today: str
+    status_after_today: str
 
 
 def parse_args_into(settings: Settings) -> None:
@@ -122,6 +129,7 @@ def parse_config(settings: Settings) -> Config:
     else:
         config_file = open(settings.config_filename)
     config = yaml.safe_load(config_file.read())
+    config_file.close()
     return Config(**config)
 
 
@@ -135,6 +143,7 @@ def parse_reminder(reminder_str: str) -> Dict[str, str]:
 
 def create_entries(
     settings: Settings,
+    config: Config,
     spec_row: CollectionRowBlock,
 ) -> Generator[Dict[str, Any], None, None]:
     r = RecurringEvent(now_date=spec_row.start_date.start)
@@ -152,17 +161,17 @@ def create_entries(
             )
         }
 
-    date_field = 'due' if spec_row.do_due == 'Due' else 'do_on'
-
     for dt in rr:
         if spec_row.not_on != '-' and dt.date() in not_dates:
             continue
-        to_insert = {
-            'title': spec_row.title,
-            'tags': spec_row.tags + ['Scheduled'],
-            'priority': spec_row.priority,
-            'status': 'Not started' if dt.date() >= datetime.date.today() else 'Completed',
-        }
+
+        to_insert = {key: spec_row.get_property(key) for key in config.properties_to_sync}
+        if config.tags_property in to_insert:
+            to_insert[config.tags_property].append(config.scheduled_tag)
+        if config.status_property:
+            to_insert[
+                config.status_property] = config.status_after_today if dt.date(
+                ) >= datetime.date.today() else config.status_before_today
 
         if spec_row.reminder:
             reminder = parse_reminder(spec_row.reminder)
@@ -173,18 +182,21 @@ def create_entries(
             if spec_row.duration:
                 duration = datetime.timedelta(
                     minutes=Duration(spec_row.duration).to_minutes())
-                to_insert[date_field] = NotionDate(dt,
-                                                   dt + duration,
-                                                   reminder=reminder)
+                to_insert[spec_row.date_field] = NotionDate(dt,
+                                                            dt + duration,
+                                                            reminder=reminder)
             else:
-                to_insert[date_field] = NotionDate(dt, reminder=reminder)
+                to_insert[spec_row.date_field] = NotionDate(dt,
+                                                            reminder=reminder)
         else:
-            to_insert[date_field] = NotionDate(dt.date(), reminder=reminder)
+            to_insert[spec_row.date_field] = NotionDate(dt.date(),
+                                                        reminder=reminder)
 
         if not settings.dry_run:
             yield to_insert
         logging.info(
-            f"Added row '{to_insert['title']}' for {dt:%Y-%m-%d}")
+            f"Added row '{to_insert.get('title', 'Untitled')}' for {dt:%Y-%m-%d}"
+        )
 
 
 def run_scheduler(settings: Settings, config: Config) -> None:
@@ -196,7 +208,7 @@ def run_scheduler(settings: Settings, config: Config) -> None:
 
     def tag_filter(tag: str) -> Dict[str, Any]:
         return {
-            'property': 'Tags',
+            'property': config.tags_property,
             'filter': {
                 'operator': 'enum_contains',
                 'value': {
@@ -208,9 +220,9 @@ def run_scheduler(settings: Settings, config: Config) -> None:
 
     scheduled_filter = {"filters": [], "operator": "or"}
     if not settings.append:
-        scheduled_filter['filters'].append(tag_filter('Scheduled'))
+        scheduled_filter['filters'].append(tag_filter(config.scheduled_tag))
     if settings.delete_rescheduled:
-        scheduled_filter['filters'].append(tag_filter('Rescheduled'))
+        scheduled_filter['filters'].append(tag_filter(config.rescheduled_tag))
 
     # remove all scheduled
     for row in (CollectionRowBlock(client, row.id)
@@ -224,5 +236,5 @@ def run_scheduler(settings: Settings, config: Config) -> None:
     for row in (CollectionRowBlock(client, row.id)
                 for row in scheduled_col.get_rows()):
         row.refresh()
-        for entry in create_entries(settings, row):
+        for entry in create_entries(settings, config, row):
             todo_col.add_row(**entry)
