@@ -1,22 +1,20 @@
 import argparse
-import os
-import logging
-import time
-import shutil
-import sys
-import subprocess
-from dataclasses import dataclass
-from enum import Enum
-import yaml
-from notion.client import NotionClient
-from notion.block.collection.basic import CollectionRowBlock
-from notion.block.collection.common import NotionDate
-from recurrent.event_parser import RecurringEvent
 import datetime
+import logging
+import os
+import sys
+import time
+from enum import Enum
+from dataclasses import dataclass
+from typing import Dict, Any, Generator, Optional, List
+
+import yaml
 from dateutil import rrule
 from durations import Duration
-
-from typing import Dict, Any, Generator, Optional, List
+from notion.block.collection.basic import CollectionRowBlock
+from notion.block.collection.common import NotionDate
+from notion.client import NotionClient
+from recurrent.event_parser import RecurringEvent
 
 LOGGING_FORMAT = "%(levelname)s: %(message)s"
 
@@ -133,7 +131,7 @@ def parse_config(settings: Settings) -> Config:
     return Config(**config)
 
 
-def parse_reminder(reminder_str: str) -> Dict[str, str]:
+def parse_reminder(reminder_str: str) -> Dict[str, Any]:
     reminder = Duration(reminder_str).parsed_durations[0]
     return {
         'value': int(reminder.value),
@@ -165,7 +163,10 @@ def create_entries(
         if spec_row.not_on != '-' and dt.date() in not_dates:
             continue
 
-        to_insert = {key: spec_row.get_property(key) for key in config.properties_to_sync}
+        to_insert = {
+            key: spec_row.get_property(key)
+            for key in config.properties_to_sync
+        }
         if config.tags_property in to_insert:
             to_insert[config.tags_property].append(config.scheduled_tag)
         if config.status_property:
@@ -173,10 +174,9 @@ def create_entries(
                 config.status_property] = config.status_after_today if dt.date(
                 ) >= datetime.date.today() else config.status_before_today
 
+        reminder = None
         if spec_row.reminder:
             reminder = parse_reminder(spec_row.reminder)
-        else:
-            reminder = None
 
         if spec_row.include_time:
             if spec_row.duration:
@@ -218,7 +218,7 @@ def run_scheduler(settings: Settings, config: Config) -> None:
             }
         }
 
-    scheduled_filter = {"filters": [], "operator": "or"}
+    scheduled_filter: Dict[str, Any] = {"filters": [], "operator": "or"}
     if not settings.append:
         scheduled_filter['filters'].append(tag_filter(config.scheduled_tag))
     if settings.delete_rescheduled:
