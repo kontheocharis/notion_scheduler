@@ -16,7 +16,7 @@ import datetime
 from dateutil import rrule
 from durations import Duration
 
-from typing import Dict, Any
+from typing import Dict, Any, Generator
 
 LOGGING_FORMAT = "%(levelname)s: %(message)s"
 
@@ -26,9 +26,9 @@ def expanded_path(x: str) -> str:
 
 
 class LogLevel(Enum):
-    NORMAL = 0
-    VERBOSE = 1
-    QUIET = 2
+    NORMAL = 'normal'
+    VERBOSE = 'verbose'
+    QUIET = 'quiet'
 
     def into_logging_level(self) -> int:
         if self == LogLevel.NORMAL:
@@ -51,6 +51,7 @@ class Settings:
     log_level: LogLevel = LogLevel.NORMAL
     dry_run: bool = False
     delete_rescheduled: bool = False
+    append: bool = False
 
 
 @dataclass
@@ -72,8 +73,9 @@ def parse_args_into(settings: Settings) -> None:
     parser.add_argument(
         "--log-level",
         dest="log_level",
-        type=str,
-        choices=LogLevel.__members__.keys(),
+        type=LogLevel,
+        choices=LogLevel,
+        default=LogLevel.NORMAL,
         help="the logging verbosity level to use",
     )
     parser.add_argument(
@@ -86,10 +88,16 @@ def parse_args_into(settings: Settings) -> None:
         "--delete-rescheduled",
         dest="delete_rescheduled",
         help="also delete 'Rescheduled' events",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--append",
+        dest="append",
+        help="only append events, do not delete existing 'Scheduled'",
+        action="store_true",
     )
 
     parser.parse_args(namespace=settings)
-    settings.log_level = LogLevel[settings.log_level]
     settings.config_filename = expanded_path(settings.config_filename)
 
 
@@ -102,6 +110,9 @@ def main() -> None:
                         format=LOGGING_FORMAT)
 
     config = parse_config(settings)
+
+    if settings.dry_run:
+        logging.info("Dry run active, no modifications will be made")
     run_scheduler(settings, config)
 
 
@@ -114,12 +125,60 @@ def parse_config(settings: Settings) -> Config:
     return Config(**config)
 
 
+def parse_reminder(reminder_str: str) -> Dict[str, str]:
+    reminder = Duration(reminder_str).parsed_durations[0]
+    return {
+        'value': int(reminder.value),
+        'unit': reminder.scale.representation.long_singular
+    }
+
+
+def create_entries(
+    settings: Settings,
+    spec_row: CollectionRowBlock,
+) -> Generator[Dict[str, Any], None, None]:
+    r = RecurringEvent(now_date=datetime.datetime.now())
+    times = r.parse(spec_row.recurrence)
+    rr = rrule.rrulestr(r.get_RFC_rrule())
+
+    date_field = 'due' if spec_row.do_due == 'Due' else 'do_on'
+
+    for dt in rr:
+        to_insert = {
+            'title': spec_row.title,
+            'tags': spec_row.tags + ['Scheduled'],
+            'priority': spec_row.priority,
+        }
+
+        if spec_row.reminder:
+            reminder = parse_reminder(spec_row.reminder)
+        else:
+            reminder = None
+
+        if spec_row.include_time:
+            if spec_row.duration:
+                duration = datetime.timedelta(
+                    minutes=Duration(spec_row.duration).to_minutes())
+                to_insert[date_field] = NotionDate(dt,
+                                                   dt + duration,
+                                                   reminder=reminder)
+            else:
+                to_insert[date_field] = NotionDate(dt, reminder=reminder)
+        else:
+            to_insert[date_field] = NotionDate(dt.date, reminder=reminder)
+
+        if not settings.dry_run:
+            yield to_insert
+        logging.info(
+            f"Added spec_row '{to_insert['title']}' for {dt:%Y-%m-%d}")
+
+
 def run_scheduler(settings: Settings, config: Config) -> None:
     client = NotionClient(token_v2=config.token_v2)
-    todo_col = client.get_collection_view(
-        config.todo_collection_url).collection
-    scheduled_col = client.get_collection_view(
-        config.scheduled_collection_url).collection
+    todo_col = client.get_collection_view(config.todo_collection_url,
+                                          force_refresh=True).collection
+    scheduled_col = client.get_collection_view(config.scheduled_collection_url,
+                                               force_refresh=True).collection
 
     def tag_filter(tag: str) -> Dict[str, Any]:
         return {
@@ -133,7 +192,9 @@ def run_scheduler(settings: Settings, config: Config) -> None:
             }
         }
 
-    scheduled_filter = {"filters": [tag_filter('Scheduled')], "operator": "or"}
+    scheduled_filter = {"filters": [], "operator": "or"}
+    if not settings.append:
+        scheduled_filter['filters'].append(tag_filter('Scheduled'))
     if settings.delete_rescheduled:
         scheduled_filter['filters'].append(tag_filter('Rescheduled'))
 
@@ -141,34 +202,13 @@ def run_scheduler(settings: Settings, config: Config) -> None:
     for row in (CollectionRowBlock(client, row.id)
                 for row in todo_col.get_rows(filter=scheduled_filter)):
         title = row.title
-        row.remove()
+        if not settings.dry_run:
+            row.remove()
         logging.info(f"Removed pre-existing scheduled row '{title}'")
 
     # add new
     for row in (CollectionRowBlock(client, row.id)
                 for row in scheduled_col.get_rows()):
-        r = RecurringEvent(now_date=datetime.datetime.now())
-        times = r.parse(row.recurrence)
-        rr = rrule.rrulestr(r.get_RFC_rrule())
-
-        date_field = 'due' if row.do_due == 'Due' else 'do_on'
-
-        for dt in rr:
-            to_insert = {
-                'title': row.title,
-                'tags': row.tags + ['Scheduled'],
-                'priority': row.priority,
-            }
-
-            if row.include_time:
-                if row.duration:
-                    duration = datetime.timedelta(
-                        minutes=Duration(row.duration).to_minutes())
-                    to_insert[date_field] = NotionDate(dt, dt + duration)
-                else:
-                    to_insert[date_field] = NotionDate(dt)
-            else:
-                to_insert[date_field] = NotionDate(dt.date)
-
-            todo_col.add_row(**to_insert)
-            logging.info(f"Added row '{to_insert['title']}' for {dt:%Y-%m-%d}")
+        row.refresh()
+        for entry in create_entries(settings, row):
+            todo_col.add_row(**entry)
