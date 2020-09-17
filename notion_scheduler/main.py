@@ -54,7 +54,7 @@ class Settings:
 
 @dataclass
 class Config:
-    todo_collection_url: str
+    tasks_collection_url: str
     scheduled_collection_url: str
     token_v2: str
     properties_to_sync: List[str]
@@ -167,6 +167,7 @@ def create_entries(
             key: spec_row.get_property(key)
             for key in config.properties_to_sync
         }
+        to_insert['title'] = spec_row.title
         if config.tags_property in to_insert:
             to_insert[config.tags_property].append(config.scheduled_tag)
         if config.status_property:
@@ -201,7 +202,7 @@ def create_entries(
 
 def run_scheduler(settings: Settings, config: Config) -> None:
     client = NotionClient(token_v2=config.token_v2)
-    todo_col = client.get_collection_view(config.todo_collection_url,
+    todo_col = client.get_collection_view(config.tasks_collection_url,
                                           force_refresh=True).collection
     scheduled_col = client.get_collection_view(config.scheduled_collection_url,
                                                force_refresh=True).collection
