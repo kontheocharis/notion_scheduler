@@ -155,7 +155,7 @@ def create_entries(
     times = r.parse(spec_row.recurrence)
     rr = rrule.rrulestr(r.get_RFC_rrule(), dtstart=spec_row.start_date.start)
 
-    if spec_row.not_on != '-':
+    if get_row_prop(spec_row, 'not_on'):
         not_r = RecurringEvent(now_date=spec_row.start_date.start)
         not_times = not_r.parse(spec_row.not_on)
         not_dates = {
@@ -167,7 +167,7 @@ def create_entries(
         }
 
     for dt in rr:
-        if spec_row.not_on != '-' and dt.date() in not_dates:
+        if get_row_prop(spec_row, 'not_on') and dt.date() in not_dates:
             continue
 
         to_insert = {
