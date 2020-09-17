@@ -10,7 +10,7 @@ This tool reads these definitions and creates each occurrence of those tasks in 
 # Installation
 
 ```
-pip3 install notion_scheduler
+pip3 install notion-scheduler
 notion_scheduler -h
 ```
 
