@@ -6,14 +6,16 @@ import sys
 import time
 from enum import Enum
 from dataclasses import dataclass
-from typing import Dict, Any, Generator, Optional, List
+from typing import Dict, Any, Generator, Optional, List, Tuple
+from collections import defaultdict
 
 import yaml
 from dateutil import rrule
 from durations import Duration
 from notion.block.collection.basic import CollectionRowBlock
 from notion.block.collection.common import NotionDate
-from notion.client import NotionClient
+from notion.client import NotionClient, CollectionBlock
+import notion.operations
 from recurrent.event_parser import RecurringEvent
 
 LOGGING_FORMAT = "%(levelname)s: %(message)s"
@@ -64,6 +66,23 @@ class Config:
     tags_property: str
     status_before_today: str
     status_after_today: str
+
+
+class Context:
+    settings: Settings
+    config: Config
+    todo_col: CollectionBlock
+    scheduled_col: CollectionBlock
+    client: NotionClient
+
+    def __init__(self, config: Config, settings: Settings):
+        self.config = config
+        self.settings = settings
+        self.client = NotionClient(token_v2=config.token_v2)
+        self.todo_col = self.client.get_collection_view(
+            config.tasks_collection_url, force_refresh=True).collection
+        self.scheduled_col = self.client.get_collection_view(
+            config.scheduled_collection_url, force_refresh=True).collection
 
 
 def parse_args_into(settings: Settings) -> None:
@@ -118,7 +137,14 @@ def main() -> None:
 
     if settings.dry_run:
         logging.info("Dry run active, no modifications will be made")
-    run_scheduler(settings, config)
+
+    context = Context(config, settings)
+
+    # Add the events
+    run_scheduler(context)
+
+    # HACK: remove duplicate tags
+    remove_duplicate_tags(context)
 
 
 def parse_config(settings: Settings) -> Config:
@@ -207,16 +233,64 @@ def create_entries(
         )
 
 
-def run_scheduler(settings: Settings, config: Config) -> None:
-    client = NotionClient(token_v2=config.token_v2)
-    todo_col = client.get_collection_view(config.tasks_collection_url,
-                                          force_refresh=True).collection
-    scheduled_col = client.get_collection_view(config.scheduled_collection_url,
-                                               force_refresh=True).collection
+def remove_duplicate_tags(context: Context) -> None:
+    def find_duplicates(tags) -> List[str]:
+        rec = defaultdict(list)
+        for item in tags:
+            rec[item["value"]].append(item["id"])
 
+        dups = []
+        for name, ids in rec.items():
+            if len(ids) > 1:
+                for d_id in ids[1:]:
+                    dups.append(d_id)
+                    logging.info(f"Found duplicate '{name}' with id '{d_id}'")
+
+        return dups
+
+    def build_ops(dups, path, record_id):
+        ops = []
+        for d in dups:
+            ops.append(
+                notion.operations.build_operations(
+                    record_id=record_id,
+                    command='keyedObjectListRemove',
+                    table='collection',
+                    path=path,
+                    args={'remove': {
+                        'id': d
+                    }},
+                ))
+
+        return ops
+
+    props = context.todo_col.get_schema_properties()
+
+    def run_transaction(property: str, col_id: str):
+        tags = next(x for x in props if x["name"].lower() == property)
+        dups = find_duplicates(tags["options"])
+        ops = build_ops(
+            dups,
+            f"schema.{tags['id']}.options",
+            col_id,
+        )
+        logging.info(f"Removing duplicates for '{property}'")
+
+        if not context.settings.dry_run:
+            context.client.submit_transaction(ops)
+
+    # Tags
+    run_transaction(context.config.tags_property, context.todo_col.id)
+
+    # Status
+    if context.config.status_property is not None:
+        run_transaction(context.config.status_property, context.todo_col.id)
+
+
+def run_scheduler(context: Context, only_remove=False) -> None:
     def tag_filter(tag: str) -> Dict[str, Any]:
         return {
-            'property': config.tags_property,
+            'property': context.config.tags_property,
             'filter': {
                 'operator': 'enum_contains',
                 'value': {
@@ -227,22 +301,25 @@ def run_scheduler(settings: Settings, config: Config) -> None:
         }
 
     scheduled_filter: Dict[str, Any] = {"filters": [], "operator": "or"}
-    if not settings.append:
-        scheduled_filter['filters'].append(tag_filter(config.scheduled_tag))
-    if settings.delete_rescheduled:
-        scheduled_filter['filters'].append(tag_filter(config.rescheduled_tag))
+    if not context.settings.append:
+        scheduled_filter['filters'].append(
+            tag_filter(context.config.scheduled_tag))
+    if context.settings.delete_rescheduled:
+        scheduled_filter['filters'].append(
+            tag_filter(context.config.rescheduled_tag))
 
     # remove all scheduled
-    for row in (CollectionRowBlock(client, row.id)
-                for row in todo_col.get_rows(filter=scheduled_filter)):
+    for row in (CollectionRowBlock(context.client, row.id)
+                for row in context.todo_col.get_rows(filter=scheduled_filter)):
         title = row.title
-        if not settings.dry_run:
+        if not context.settings.dry_run:
             row.remove()
         logging.info(f"Removed pre-existing scheduled row '{title}'")
 
-    # add new
-    for row in (CollectionRowBlock(client, row.id)
-                for row in scheduled_col.get_rows()):
-        row.refresh()
-        for entry in create_entries(settings, config, row):
-            todo_col.add_row(**entry)
+    if not only_remove:
+        # add new
+        for row in (CollectionRowBlock(context.client, row.id)
+                    for row in context.scheduled_col.get_rows()):
+            row.refresh()
+            for entry in create_entries(context.settings, context.config, row):
+                context.todo_col.add_row(**entry, update_views=False)
