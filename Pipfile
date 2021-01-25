@@ -7,10 +7,10 @@ verify_ssl = true
 
 [packages]
 pyyaml = "*"
-notion-py = "*"
+notion-py = {git = "https://github.com/arturtamborski/notion-py", editable = true, ref = "master"}
 recurrent = "*"
 python-dateutil = "*"
 durations = "*"
 
 [requires]
-python_version = "3.8"
+python_version = "3.9"
