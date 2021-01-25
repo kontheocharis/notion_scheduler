@@ -7,6 +7,8 @@ This tool reads these definitions and creates each occurrence of those tasks in 
 
 **DISCLAIMER**: I am not responsible if this tool causes any data loss in your Notion database. Always back up your data!
 
+Screenshots: See [reddit post](https://www.reddit.com/r/Notion/comments/iut6lz/recurring_tasks_in_notion_with_no_compromises/?utm_source=share&utm_medium=web2x&context=3).
+
 # Installation
 
 ```
