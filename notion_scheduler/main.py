@@ -309,17 +309,25 @@ def run_scheduler(context: Context, only_remove=False) -> None:
             tag_filter(context.config.rescheduled_tag))
 
     # remove all scheduled
-    for row in (CollectionRowBlock(context.client, row.id)
-                for row in context.todo_col.get_rows(filter=scheduled_filter)):
-        title = row.title
-        if not context.settings.dry_run:
-            row.remove()
-        logging.info(f"Removed pre-existing scheduled row '{title}'")
+    rows_to_remove = [
+        CollectionRowBlock(context.client, row.id)
+        for row in context.todo_col.get_rows(filter=scheduled_filter)
+    ]
+    with context.client.as_atomic_transaction():
+        for row in rows_to_remove:
+            title = row.title
+            if not context.settings.dry_run:
+                row.remove()
+            logging.info(f"Removed pre-existing scheduled row '{title}'")
 
-    if not only_remove:
-        # add new
-        for row in (CollectionRowBlock(context.client, row.id)
-                    for row in context.scheduled_col.get_rows()):
-            row.refresh()
-            for entry in create_entries(context.settings, context.config, row):
-                context.todo_col.add_row(**entry, update_views=False)
+    if only_remove:
+        return
+
+    rows_to_add = [
+        CollectionRowBlock(context.client, row.id)
+        for row in context.scheduled_col.get_rows()
+    ]
+    # add new
+    for row in rows_to_add:
+        for entry in create_entries(context.settings, context.config, row):
+            context.todo_col.add_row(**entry, update_views=False)
