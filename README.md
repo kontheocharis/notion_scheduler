@@ -1,3 +1,5 @@
+**Warning**: This software is currently broken because it uses an unofficial Notion API library. The plan is to re-write it soon, using the Notion API official public beta, which was released in late May.
+
 # `notion_scheduler`
 
 This tool allows the creation of---*drumroll*---**recurring tasks in Notion!**
